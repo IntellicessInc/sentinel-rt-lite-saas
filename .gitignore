@@ -1,2 +1,5 @@
 .idea
 venv
+input_files/sent-data
+output_files
+logs

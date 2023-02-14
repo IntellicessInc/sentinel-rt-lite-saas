@@ -1,8 +1,11 @@
+import json
+
 import requests
 from requests import Response
+from requests.exceptions import ChunkedEncodingError, ReadTimeout
 
-import keycloak_client
 import app_logger
+import keycloak_client
 import properties
 import utils
 
@@ -28,6 +31,7 @@ def delete_well_data_from_union(client_name, region, well):
         raise Exception(
             f"General data entries deletion failure with http response status code={res.status_code} and response={res.text}")
 
+
 def send(client, region, well, folder, jwlf):
     url = f"{properties.UNION_URL}/well-logs/{client}/{region}/{well}/{folder}"
     res: Response = requests.post(url, json=jwlf,
@@ -36,6 +40,40 @@ def send(client, region, well, folder, jwlf):
         raise Exception(
             f"Sending data failure with http response status code={res.status_code} and response={res.text}")
     return res.json()["id"]
+
+
+def get_jwlfs_stream(client, region, well, folder, resume_token, full_data=True):
+    for event in _get_stream(client, region, well, folder, resume_token, full_data,
+                             'well-logs'):
+        yield event
+
+
+def get_general_data_stream(client, region, well, folder, resume_token, full_data=True):
+    for event in _get_stream(client, region, well, folder, resume_token, full_data,
+                             'general-data-entries'):
+        yield event
+
+
+def _get_stream(client, region, well, folder, resume_token, full_data, endpoint_name):
+    query_params = {'fullData': ('true' if full_data else 'false')}
+    url = f"{properties.UNION_URL}/{endpoint_name}-stream/{client}/{region}/{well}/{folder}"
+    while True:
+        access_token = keycloak_client.get_access_token()
+        headers = {'Authorization': f"Bearer {access_token}"}
+        if resume_token is not None:
+            query_params['resumeToken'] = resume_token
+        try:
+            with requests.get(url, stream=True, params=query_params, headers=headers, timeout=90) as response:
+                for line in response.iter_lines(decode_unicode=True):
+                    if line and line != '':
+                        new_event = json.loads(line)
+                        resume_token = new_event['id']
+                        yield new_event
+        except ChunkedEncodingError:
+            pass
+        except ReadTimeout:
+            pass
+
 
 def get_data_entries_from_union(url, since_date_time):
     query_params = {}
@@ -101,4 +139,3 @@ def get_data_entries_from_union(url, since_date_time):
             app_logger.log(f"Receiving new output data packets {(len(entries) / all_ids_num) * 100.0}%")
 
     return {'entries': entries, 'till_date_time': till_date_time}
-

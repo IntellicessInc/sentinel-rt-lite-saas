@@ -27,6 +27,9 @@ _running_consumer = True
 _last_data_fetch_datetime = None
 _contextual_input_data_files_hash_dict = {}
 _sentinel_rt_lite_started = False
+_resume_token_jwlf = None
+_resume_token_general_data = None
+_new_lines_to_print_in_console_dict = {}
 
 
 def send_input_data(input_data_type):
@@ -79,35 +82,6 @@ def send_input_data(input_data_type):
                     app_logger.log(
                         f"Sending input data from '{file_path}': {((line_index + 1) / num_of_lines) * 100}%")
                 line_index += 1
-
-
-def get_new_output_data_lines(client, region, well):
-    global _till_date_time_jwlf, _till_date_time_general_data
-
-    since_date_time_jwlf = _till_date_time_jwlf
-    entries_data = utils.run_request_with_retries(
-        fun=lambda: union_client.get_data_entries_from_union(
-            f"{properties.UNION_URL}/well-logs/{client}/{region}/{well}/{properties.LOG_OUTPUT_UNION_FOLDER}",
-            since_date_time_jwlf),
-        default_response={'entries': [], 'till_date_time': properties.MIN_DATE_TIME})
-    new_jwlf_logs = entries_data['entries']
-    _till_date_time_jwlf = entries_data['till_date_time']
-
-    since_date_time_general_data = _till_date_time_general_data
-    general_data_entries = utils.run_request_with_retries(
-        fun=lambda: union_client.get_data_entries_from_union(
-            f"{properties.UNION_URL}/general-data-entries/{client}/{region}/{well}/{properties.GENERAL_DATA_OUTPUT_UNION_FOLDER}",
-            since_date_time_general_data),
-        default_response={'entries': [], 'till_date_time': properties.MIN_DATE_TIME}
-    )
-    new_general_data_entries = general_data_entries['entries']
-    _till_date_time_general_data = general_data_entries['till_date_time']
-
-    new_output_data_lines_dict = {}
-    new_output_data_lines_dict.update(general_data_entries_to_new_output_data_lines_dict(new_general_data_entries))
-    new_output_data_lines_dict.update(jwlf_logs_to_new_output_data_lines_dict(new_jwlf_logs))
-
-    return new_output_data_lines_dict
 
 
 def general_data_entries_to_new_output_data_lines_dict(new_general_data_entries):
@@ -200,6 +174,8 @@ def get_headers(data_name, headers_index):
 
 
 def save_locally_output_data_lines(lines_entries, data_name, headers):
+    global _new_lines_to_print_in_console_dict
+
     output_data_file_path = resolve_output_data_file_path(data_name)
     appended = True
     if data_name in properties.OUTPUT_DATA_NAMES_FILENAMES_DICT.keys():
@@ -219,10 +195,10 @@ def save_locally_output_data_lines(lines_entries, data_name, headers):
             if lines_num == 0:
                 app_logger.log(f"Received headers of '{output_data_file_path}'")
             else:
-                lines_str = 'lines'
-                if lines_num == 1:
-                    lines_str = 'line'
-                app_logger.log(f"Received {lines_num} new {lines_str} of '{output_data_file_path}'")
+                if output_data_file_path not in _new_lines_to_print_in_console_dict.keys():
+                    _new_lines_to_print_in_console_dict[output_data_file_path] = lines_num
+                else:
+                    _new_lines_to_print_in_console_dict[output_data_file_path] += lines_num
         active_row_limit = data_name in properties.VOL_POSTFIX_OUTPUT_DATA_LIST
         file_utils.append_lines_to_file(lines, output_data_file_path, active_row_limit, headers)
     else:
@@ -371,8 +347,8 @@ def rename_sent_input_files():
                   properties.BROOK_SENT_RT_INPUT_DATA_FILE_PATH)
 
 
-def load_last_till_date_time():
-    global _till_date_time_jwlf, _till_date_time_general_data
+def load_resume_tokens():
+    global _resume_token_jwlf, _resume_token_general_data
 
     file_path_parts = properties.OUTPUT_FILES_SYNCH_TIMESTAMP_FILE_PATH.split("/")
     data = {}
@@ -383,26 +359,25 @@ def load_last_till_date_time():
                 data = json.loads(data_json)
             except:
                 traceback.print_exc()
-                print(f"Loading last till date times failure. Setting default values...")
+                print(f"Loading resume tokens failure. Setting default values...")
 
-    if 'till_date_time_jwlf' in data:
-        _till_date_time_jwlf = utils.milliseconds_timestamp_to_date_time(int(data['till_date_time_jwlf']))
+    if 'resume_token_jwlf' in data:
+        _resume_token_jwlf = str(data['resume_token_jwlf'])
     else:
-        _till_date_time_jwlf = properties.MIN_DATE_TIME
+        _resume_token_jwlf = None
 
-    if 'till_date_time_general_data' in data:
-        _till_date_time_general_data = utils.milliseconds_timestamp_to_date_time(
-            int(data['till_date_time_general_data']))
+    if 'resume_token_general_data' in data:
+        _resume_token_general_data = str(data['resume_token_general_data'])
     else:
-        _till_date_time_general_data = properties.MIN_DATE_TIME
+        _resume_token_general_data = None
 
 
-def update_output_files_synch_timestamps():
+def update_resume_tokens():
     data = {}
     if _till_date_time_jwlf:
-        data['till_date_time_jwlf'] = str(utils.date_time_to_milliseconds_timestamp(_till_date_time_jwlf))
+        data['resume_token_jwlf'] = str(utils.date_time_to_milliseconds_timestamp(_till_date_time_jwlf))
     if _till_date_time_general_data:
-        data['till_date_time_general_data'] = str(
+        data['resume_token_general_data'] = str(
             utils.date_time_to_milliseconds_timestamp(_till_date_time_general_data))
     with open(properties.OUTPUT_FILES_SYNCH_TIMESTAMP_FILE_PATH, 'w', encoding='utf8') as file:
         json_data = json.dumps(data)
@@ -418,32 +393,52 @@ def get_rt_input_data_offset():
     return offset
 
 
-def synch_output_data():
-    global _new_output_data_lines_dict, _last_data_fetch_datetime
+def print_received_new_lines():
+    global _new_lines_to_print_in_console_dict
+    if properties.RECEIVED_NEW_LINES_PRINTING_FREQUENCY > 0:
+        while True:
+            for output_data_file_path in _new_lines_to_print_in_console_dict:
+                lines_num = _new_lines_to_print_in_console_dict[output_data_file_path]
+                if lines_num > 0:
+                    lines_str = 'lines'
+                    if lines_num == 1:
+                        lines_str = 'line'
+                    app_logger.log(f"Received {lines_num} new {lines_str} of '{output_data_file_path}'")
+                    _new_lines_to_print_in_console_dict[output_data_file_path] = 0
+            time.sleep(1 / properties.RECEIVED_NEW_LINES_PRINTING_FREQUENCY)
 
-    _new_output_data_lines_dict = get_new_output_data_lines(properties.CLIENT, properties.REGION, properties.WELL)
-    save_locally_output_data(_new_output_data_lines_dict)
-    update_output_files_synch_timestamps()
 
-    if len(_new_output_data_lines_dict) > 0:
-        _last_data_fetch_datetime = datetime.datetime.utcnow()
-        return True
-    return False
-
-
-def consume_data():
-    global _sentinel_rt_lite_started, _start_datetime, _sleep_time
+def consume_jwlf_data():
+    global _sentinel_rt_lite_started, _resume_token_jwlf, _last_data_fetch_datetime
 
     while True:
         try:
-            _start_datetime = datetime.datetime.utcnow()
-            is_new_data = synch_output_data()
-            _sentinel_rt_lite_started = _sentinel_rt_lite_started or is_new_data
+            for new_event in union_client.get_jwlfs_stream(properties.CLIENT, properties.REGION, properties.WELL,
+                                                           properties.LOG_OUTPUT_UNION_FOLDER, _resume_token_jwlf):
+                log = new_event['data']
+                _resume_token_jwlf = new_event['id']
+                save_locally_output_data(jwlf_logs_to_new_output_data_lines_dict([log]))
+                _last_data_fetch_datetime = datetime.datetime.utcnow()
+                _sentinel_rt_lite_started = True
+                update_resume_tokens()
+        except:
+            continue
 
-            _sleep_time = max(
-                properties.DATA_SYNCH_RATE_IN_SECONDS / 2.0 - (datetime.datetime.utcnow() - _start_datetime).total_seconds(),
-                0)
-            time.sleep(_sleep_time)
+
+def consume_general_data():
+    global _sentinel_rt_lite_started, _resume_token_general_data, _last_data_fetch_datetime
+
+    while True:
+        try:
+            for new_event in union_client.get_general_data_stream(properties.CLIENT, properties.REGION, properties.WELL,
+                                                                  properties.LOG_OUTPUT_UNION_FOLDER,
+                                                                  _resume_token_general_data):
+                general_data_entry = new_event['data']
+                _resume_token_general_data = new_event['id']
+                save_locally_output_data(general_data_entries_to_new_output_data_lines_dict([general_data_entry]))
+                _last_data_fetch_datetime = datetime.datetime.utcnow()
+                _sentinel_rt_lite_started = True
+                update_resume_tokens()
         except:
             continue
 
@@ -458,9 +453,10 @@ def run_real_time_mode():
     global _start_datetime, _sleep_time
 
     if properties.RunTypes.CONSUMER in properties.ACTIVE_RUN_TYPES:
-        threading.Thread(target=consume_data, daemon=True).start()
+        threading.Thread(target=consume_jwlf_data, daemon=True).start()
+        threading.Thread(target=consume_general_data, daemon=True).start()
 
-    while not _sentinel_rt_lite_started:
+    while not _sentinel_rt_lite_started or properties.RunTypes.PRODUCER not in properties.ACTIVE_RUN_TYPES:
         time.sleep(1)
 
     if properties.RunTypes.PRODUCER in properties.ACTIVE_RUN_TYPES:
@@ -490,7 +486,8 @@ def run_real_time_mode():
                                                   properties.LOG_INPUT_UNION_FOLDER, input_jwlf))
                     save_locally_sent_input_data(properties.BROOK_SENT_RT_INPUT_DATA_FILE_PATH,
                                                  input_data_lines=input_data_lines)
-                    app_logger.log(f"New line of real time data was sent to Sentinel RT Lite SaaS. Time Stamp: {input_jwlf['header']['date']}")
+                    app_logger.log(
+                        f"New line of real time data was sent to Sentinel RT Lite SaaS. Time Stamp: {input_jwlf['header']['date']}")
                     input_data_lines = []
 
                 if properties.sentinel_exit:
@@ -511,14 +508,17 @@ def run_historical_mode():
         send_historical_input_data()
     if properties.RunTypes.CONSUMER in properties.ACTIVE_RUN_TYPES:
         loading_data_message_logged = False
+
+        threading.Thread(target=consume_jwlf_data, daemon=True).start()
+        threading.Thread(target=consume_general_data, daemon=True).start()
+
         while _running_consumer:
+            _sentinel_rt_lite_started = _last_data_fetch_datetime is not None
             if not loading_data_message_logged and _sentinel_rt_lite_started:
                 loading_data_message_logged = True
                 app_logger.log("Sentinel RT Lite SaaS is loading the data...")
                 app_logger.log("It may take up to a few minutes")
             _start_datetime = datetime.datetime.utcnow()
-            is_new_data = synch_output_data()
-            _sentinel_rt_lite_started = _sentinel_rt_lite_started or is_new_data
             if properties.sentinel_exit:
                 break
             if _last_data_fetch_datetime is not None:
@@ -526,7 +526,8 @@ def run_historical_mode():
                     milliseconds=properties.LAST_DATA_FETCH_MAX_DELAY_MILLISECONDS) < _last_data_fetch_datetime
 
             _sleep_time = max(
-                properties.DATA_SYNCH_RATE_IN_SECONDS / 2.0 - (datetime.datetime.utcnow() - _start_datetime).total_seconds(),
+                properties.DATA_SYNCH_RATE_IN_SECONDS / 2.0 - (
+                        datetime.datetime.utcnow() - _start_datetime).total_seconds(),
                 0)
             time.sleep(_sleep_time)
         app_logger.log("Finished receiving data from Sentinel RT Lite SaaS")
@@ -537,11 +538,12 @@ load_bot_properties()
 load_headers_dict()
 rename_sent_input_files()
 rt_input_data_offset = get_rt_input_data_offset()
-load_last_till_date_time()
+load_resume_tokens()
 
 app_logger.log(f"{properties.RT_INPUT_DATA_TYPE.name} mode is on")
 app_logger.log("Creating new Sentinel RT Lite SaaS instance...")
 register_sentinel_cloud_instance()
+threading.Thread(target=print_received_new_lines, daemon=True).start()
 
 app_logger.log("Sentinel RT Lite SaaS is starting...")
 app_logger.log("Please wait for about 3 minutes")
