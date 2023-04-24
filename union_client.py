@@ -59,7 +59,7 @@ def _get_stream(client, region, well, folder, resume_token, full_data, endpoint_
     url = f"{properties.UNION_URL}/{endpoint_name}-stream/{client}/{region}/{well}/{folder}"
     while True:
         access_token = keycloak_client.get_access_token()
-        headers = {'Authorization': f"Bearer {access_token}"}
+        headers = {'Authorization': f"Bearer {access_token}", 'Accept': 'application/x-ndjson'}
         if resume_token is not None:
             query_params['resumeToken'] = resume_token
         try:

@@ -28,7 +28,9 @@ _last_data_fetch_datetime = None
 _contextual_input_data_files_hash_dict = {}
 _sentinel_rt_lite_started = False
 _resume_token_jwlf = None
+_resume_at_timestamp_jwlf = None
 _resume_token_general_data = None
+_resume_at_timestamp_general_data = None
 _new_lines_to_print_in_console_dict = {}
 
 
@@ -409,14 +411,15 @@ def print_received_new_lines():
 
 
 def consume_jwlf_data():
-    global _sentinel_rt_lite_started, _resume_token_jwlf, _last_data_fetch_datetime
+    global _sentinel_rt_lite_started, _resume_token_jwlf, _resume_at_timestamp_jwlf, _last_data_fetch_datetime
 
     while True:
         try:
             for new_event in union_client.get_jwlfs_stream(properties.CLIENT, properties.REGION, properties.WELL,
                                                            properties.LOG_OUTPUT_UNION_FOLDER, _resume_token_jwlf):
-                log = new_event['data']
+                log = new_event['data']['content']
                 _resume_token_jwlf = new_event['id']
+                _resume_at_timestamp_jwlf = new_event['data']['stableDataTimestamp']
                 save_locally_output_data(jwlf_logs_to_new_output_data_lines_dict([log]))
                 _last_data_fetch_datetime = datetime.datetime.utcnow()
                 _sentinel_rt_lite_started = True
@@ -426,15 +429,16 @@ def consume_jwlf_data():
 
 
 def consume_general_data():
-    global _sentinel_rt_lite_started, _resume_token_general_data, _last_data_fetch_datetime
+    global _sentinel_rt_lite_started, _resume_token_general_data, _resume_at_timestamp_general_data, _last_data_fetch_datetime
 
     while True:
         try:
             for new_event in union_client.get_general_data_stream(properties.CLIENT, properties.REGION, properties.WELL,
                                                                   properties.LOG_OUTPUT_UNION_FOLDER,
                                                                   _resume_token_general_data):
-                general_data_entry = new_event['data']
+                general_data_entry = new_event['data']['content']
                 _resume_token_general_data = new_event['id']
+                _resume_at_timestamp_general_data = new_event['data']['stableDataTimestamp']
                 save_locally_output_data(general_data_entries_to_new_output_data_lines_dict([general_data_entry]))
                 _last_data_fetch_datetime = datetime.datetime.utcnow()
                 _sentinel_rt_lite_started = True
@@ -481,13 +485,15 @@ def run_real_time_mode():
                 input_jwlf = csv_jwlf_converter.csv_line_to_jwlf_log(properties.RT_INPUT_DATA_TYPE.name,
                                                                      input_header_line, input_data_lines)
                 if input_jwlf:
+                    app_logger.log(
+                        f"New line of real time data is being sent to Sentinel RT Lite SaaS. Time Stamp: {input_jwlf['header']['date']}")
                     utils.run_request_with_retries(
                         lambda: union_client.send(properties.CLIENT, properties.REGION, properties.WELL,
                                                   properties.LOG_INPUT_UNION_FOLDER, input_jwlf))
+                    app_logger.log(
+                        f"New line of real time data has been sent to Sentinel RT Lite SaaS. Time Stamp: {input_jwlf['header']['date']}")
                     save_locally_sent_input_data(properties.BROOK_SENT_RT_INPUT_DATA_FILE_PATH,
                                                  input_data_lines=input_data_lines)
-                    app_logger.log(
-                        f"New line of real time data was sent to Sentinel RT Lite SaaS. Time Stamp: {input_jwlf['header']['date']}")
                     input_data_lines = []
 
                 if properties.sentinel_exit:
