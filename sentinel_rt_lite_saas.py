@@ -350,7 +350,7 @@ def rename_sent_input_files():
 
 
 def load_resume_tokens():
-    global _resume_token_jwlf, _resume_token_general_data
+    global _resume_token_jwlf, _resume_token_general_data, _resume_at_timestamp_jwlf, _resume_at_timestamp_general_data
 
     file_path_parts = properties.OUTPUT_FILES_SYNCH_TIMESTAMP_FILE_PATH.split("/")
     data = {}
@@ -373,17 +373,34 @@ def load_resume_tokens():
     else:
         _resume_token_general_data = None
 
+    if 'resume_at_timestamp_jwlf' in data:
+        _resume_at_timestamp_jwlf = data['resume_at_timestamp_jwlf']
+    else:
+        _resume_at_timestamp_jwlf = None
+
+    if 'resume_at_timestamp_general_data' in data:
+        _resume_at_timestamp_general_data = data['resume_at_timestamp_general_data']
+    else:
+        _resume_at_timestamp_general_data = None
+
 
 def update_resume_tokens():
+    global _resume_token_jwlf, _resume_at_timestamp_jwlf, _resume_token_general_data, _resume_at_timestamp_general_data
+
     data = {}
-    if _till_date_time_jwlf:
-        data['resume_token_jwlf'] = str(utils.date_time_to_milliseconds_timestamp(_till_date_time_jwlf))
-    if _till_date_time_general_data:
-        data['resume_token_general_data'] = str(
-            utils.date_time_to_milliseconds_timestamp(_till_date_time_general_data))
-    with open(properties.OUTPUT_FILES_SYNCH_TIMESTAMP_FILE_PATH, 'w', encoding='utf8') as file:
+    if _resume_token_jwlf:
+        data['resume_token_jwlf'] = _resume_token_jwlf
+    if _resume_token_general_data:
+        data['resume_token_general_data'] = _resume_token_general_data
+    if _resume_at_timestamp_jwlf:
+        data['_resume_at_timestamp_jwlf'] = _resume_at_timestamp_jwlf
+    if _resume_at_timestamp_general_data:
+        data['_resume_at_timestamp_general_data'] = _resume_at_timestamp_general_data
+    tmp_file_path = properties.OUTPUT_FILES_SYNCH_TIMESTAMP_FILE_PATH + ".tmp"
+    with open(tmp_file_path, 'w', encoding='utf8') as file:
         json_data = json.dumps(data)
         file.write(json_data)
+    os.replace(tmp_file_path, properties.OUTPUT_FILES_SYNCH_TIMESTAMP_FILE_PATH)
 
 
 def get_rt_input_data_offset():
@@ -399,7 +416,8 @@ def print_received_new_lines():
     global _new_lines_to_print_in_console_dict
     if properties.RECEIVED_NEW_LINES_PRINTING_FREQUENCY > 0:
         while True:
-            for output_data_file_path in _new_lines_to_print_in_console_dict:
+            output_data_file_paths = list(_new_lines_to_print_in_console_dict.keys())
+            for output_data_file_path in output_data_file_paths:
                 lines_num = _new_lines_to_print_in_console_dict[output_data_file_path]
                 if lines_num > 0:
                     lines_str = 'lines'
@@ -416,7 +434,8 @@ def consume_jwlf_data():
     while True:
         try:
             for new_event in union_client.get_jwlfs_stream(properties.CLIENT, properties.REGION, properties.WELL,
-                                                           properties.LOG_OUTPUT_UNION_FOLDER, _resume_token_jwlf):
+                                                           properties.LOG_OUTPUT_UNION_FOLDER, _resume_token_jwlf,
+                                                           _resume_at_timestamp_jwlf):
                 log = new_event['data']['content']
                 _resume_token_jwlf = new_event['id']
                 _resume_at_timestamp_jwlf = new_event['data']['stableDataTimestamp']
@@ -435,7 +454,7 @@ def consume_general_data():
         try:
             for new_event in union_client.get_general_data_stream(properties.CLIENT, properties.REGION, properties.WELL,
                                                                   properties.LOG_OUTPUT_UNION_FOLDER,
-                                                                  _resume_token_general_data):
+                                                                  _resume_token_general_data, _resume_at_timestamp_general_data):
                 general_data_entry = new_event['data']['content']
                 _resume_token_general_data = new_event['id']
                 _resume_at_timestamp_general_data = new_event['data']['stableDataTimestamp']

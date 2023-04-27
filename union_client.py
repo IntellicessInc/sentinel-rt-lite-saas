@@ -42,19 +42,19 @@ def send(client, region, well, folder, jwlf):
     return res.json()["id"]
 
 
-def get_jwlfs_stream(client, region, well, folder, resume_token, full_data=True):
-    for event in _get_stream(client, region, well, folder, resume_token, full_data,
+def get_jwlfs_stream(client, region, well, folder, resume_token, _resume_at_timestamp, full_data=True):
+    for event in _get_stream(client, region, well, folder, resume_token, _resume_at_timestamp, full_data,
                              'well-logs'):
         yield event
 
 
-def get_general_data_stream(client, region, well, folder, resume_token, full_data=True):
-    for event in _get_stream(client, region, well, folder, resume_token, full_data,
+def get_general_data_stream(client, region, well, folder, resume_token, _resume_at_timestamp, full_data=True):
+    for event in _get_stream(client, region, well, folder, resume_token, _resume_at_timestamp, full_data,
                              'general-data-entries'):
         yield event
 
 
-def _get_stream(client, region, well, folder, resume_token, full_data, endpoint_name):
+def _get_stream(client, region, well, folder, resume_token, _resume_at_timestamp, full_data, endpoint_name):
     query_params = {'fullData': ('true' if full_data else 'false')}
     url = f"{properties.UNION_URL}/{endpoint_name}-stream/{client}/{region}/{well}/{folder}"
     while True:
@@ -62,6 +62,8 @@ def _get_stream(client, region, well, folder, resume_token, full_data, endpoint_
         headers = {'Authorization': f"Bearer {access_token}", 'Accept': 'application/x-ndjson'}
         if resume_token is not None:
             query_params['resumeToken'] = resume_token
+        if _resume_at_timestamp is not None:
+            query_params['resumeAtTimestamp'] = _resume_at_timestamp
         try:
             with requests.get(url, stream=True, params=query_params, headers=headers, timeout=90) as response:
                 for line in response.iter_lines(decode_unicode=True):
