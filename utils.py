@@ -50,11 +50,12 @@ def run_request_with_retries(fun, default_response=None, max_retries=24 * 3600):
         try:
             response = fun()
             sent = True
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             sent = False
             app_logger.log(f"Error occured: {e}")
             time.sleep(1)
     return response
+
 
 def historical_match(filename_from_property, input_filename):
     return properties.RTInputDataTypes.HISTORICAL == properties.RT_INPUT_DATA_TYPE and filename_from_property == input_filename
