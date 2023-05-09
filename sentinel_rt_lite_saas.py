@@ -302,10 +302,14 @@ def register_sentinel_cloud_instance():
     region = properties.REGION
     well = properties.WELL
     if properties.CLEAN_START:
-        brook_client.delete_well_if_exists(client_name)
+        utils.run_request_with_retries(
+            lambda: brook_client.delete_well_if_exists(client_name))
         time.sleep(20)
-        union_client.delete_well_data_from_union(client_name, region, well)
-    well_id = brook_client.register_well_if_doesnt_exist(client_name)
+        utils.run_request_with_retries(
+            lambda: union_client.delete_well_data_from_union(client_name, region, well))
+
+    well_id = utils.run_request_with_retries(
+        lambda: brook_client.register_well_if_doesnt_exist(client_name))
 
     app_logger.log(f"Brook well with id={well_id} is registered")
 
@@ -313,7 +317,8 @@ def register_sentinel_cloud_instance():
     for key in _bot_properties.keys():
         properties_dict[key] = _bot_properties[key]
 
-    brook_client.update_sentinel_cloud_properties(client_name, properties_dict)
+    utils.run_request_with_retries(
+        lambda: brook_client.update_sentinel_cloud_properties(client_name, properties_dict))
 
 
 def create_data_directories():
@@ -571,7 +576,7 @@ register_sentinel_cloud_instance()
 threading.Thread(target=print_received_new_lines, daemon=True).start()
 
 app_logger.log("Sentinel RT Lite SaaS is starting...")
-app_logger.log("Please wait for about 3 minutes")
+app_logger.log("Please wait for about 5 minutes")
 if properties.RTInputDataTypes.REAL_TIME == properties.RT_INPUT_DATA_TYPE:
     run_real_time_mode()
 elif properties.RTInputDataTypes.HISTORICAL == properties.RT_INPUT_DATA_TYPE:
