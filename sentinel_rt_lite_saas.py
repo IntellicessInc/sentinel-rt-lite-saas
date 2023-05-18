@@ -441,12 +441,15 @@ def consume_jwlf_data():
             for new_event in union_client.get_jwlfs_stream(properties.CLIENT, properties.REGION, properties.WELL,
                                                            properties.LOG_OUTPUT_UNION_FOLDER, _resume_token_jwlf,
                                                            _resume_at_timestamp_jwlf):
-                log = new_event['data']['content']
-                _resume_token_jwlf = new_event['id']
-                _resume_at_timestamp_jwlf = new_event['data']['stableDataTimestamp']
-                save_locally_output_data(jwlf_logs_to_new_output_data_lines_dict([log]))
-                _last_data_fetch_datetime = datetime.datetime.utcnow()
-                _sentinel_rt_lite_started = True
+                if new_event['event'] == 'WELL_LOG_CREATED':
+                    log = new_event['data']['content']
+                    _resume_token_jwlf = new_event['id']
+                    _resume_at_timestamp_jwlf = new_event['data']['stableDataTimestamp']
+                    save_locally_output_data(jwlf_logs_to_new_output_data_lines_dict([log]))
+                    _last_data_fetch_datetime = datetime.datetime.utcnow()
+                    _sentinel_rt_lite_started = True
+                elif new_event['event'] == 'ERROR':
+                    app_logger.log(f"Error received from Union JWLF stream: '{new_event['data']['content']}'")
                 update_resume_tokens()
         except:
             continue
@@ -460,12 +463,15 @@ def consume_general_data():
             for new_event in union_client.get_general_data_stream(properties.CLIENT, properties.REGION, properties.WELL,
                                                                   properties.LOG_OUTPUT_UNION_FOLDER,
                                                                   _resume_token_general_data, _resume_at_timestamp_general_data):
-                general_data_entry = new_event['data']['content']
-                _resume_token_general_data = new_event['id']
-                _resume_at_timestamp_general_data = new_event['data']['stableDataTimestamp']
-                save_locally_output_data(general_data_entries_to_new_output_data_lines_dict([general_data_entry]))
-                _last_data_fetch_datetime = datetime.datetime.utcnow()
-                _sentinel_rt_lite_started = True
+                if new_event['event'] == 'GENERAL_DATA_ENTRY_CREATED':
+                    general_data_entry = new_event['data']['content']
+                    _resume_token_general_data = new_event['id']
+                    _resume_at_timestamp_general_data = new_event['data']['stableDataTimestamp']
+                    save_locally_output_data(general_data_entries_to_new_output_data_lines_dict([general_data_entry]))
+                    _last_data_fetch_datetime = datetime.datetime.utcnow()
+                    _sentinel_rt_lite_started = True
+                elif new_event['event'] == 'ERROR':
+                    app_logger.log(f"Error received from Union General Data stream: '{new_event['data']['content']}'")
                 update_resume_tokens()
         except:
             continue
