@@ -301,24 +301,29 @@ def register_sentinel_cloud_instance():
     client_name = properties.CLIENT
     region = properties.REGION
     well = properties.WELL
+
+    well_id = utils.run_request_with_retries(
+        lambda: brook_client.register_well_if_doesnt_exist(client_name))
     if properties.CLEAN_START:
         utils.run_request_with_retries(
-            lambda: brook_client.delete_well_if_exists(client_name))
+            lambda: brook_client.delete_bot_if_exists(client_name, well_id))
         time.sleep(20)
         utils.run_request_with_retries(
             lambda: union_client.delete_well_data_from_union(client_name, region, well))
 
-    well_id = utils.run_request_with_retries(
-        lambda: brook_client.register_well_if_doesnt_exist(client_name))
-
     app_logger.log(f"Brook well with id={well_id} is registered")
+
+    bot_id = utils.run_request_with_retries(
+        lambda: brook_client.create_bot_if_doesnt_exist(client_name, well_id))
+
+    app_logger.log(f"Bot is running with id={bot_id}")
 
     properties_dict = {}
     for key in _bot_properties.keys():
         properties_dict[key] = _bot_properties[key]
 
     utils.run_request_with_retries(
-        lambda: brook_client.update_sentinel_cloud_properties(client_name, properties_dict))
+        lambda: brook_client.update_sentinel_cloud_properties(client_name, bot_id, properties_dict))
 
 
 def create_data_directories():

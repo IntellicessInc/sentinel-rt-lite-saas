@@ -50,11 +50,11 @@ KEYCLOAK_CLIENT_SECRET = 'i7kKXAjbF600wLuPyWmiODptPFysdGWf'
 
 CLIENT = 'public-test'
 REGION = 'texas'
-LOG_INPUT_UNION_FOLDER = 'sentinel-saas-lite_input-folder'
-LOG_OUTPUT_UNION_FOLDER = 'sentinel-saas-lite_output-folder'
-GENERAL_DATA_INPUT_UNION_FOLDER = 'sentinel-saas-lite_input-folder'
-GENERAL_DATA_OUTPUT_UNION_FOLDER = 'sentinel-saas-lite_output-folder'
-BROOK_BOT_TYPE = "Sentinel Saas Lite"
+LOG_INPUT_UNION_FOLDER = 'sentinel-rt-saas-lite_input-folder'
+LOG_OUTPUT_UNION_FOLDER = 'sentinel-rt-saas-lite_output-folder'
+GENERAL_DATA_INPUT_UNION_FOLDER = 'sentinel-rt-saas-lite_input-folder'
+GENERAL_DATA_OUTPUT_UNION_FOLDER = 'sentinel-rt-saas-lite_output-folder'
+BROOK_BOT_TYPE = "Sentinel RT SaaS Lite"
 MAX_GET_BOT_ID_REQUESTS = 300
 BOT_ID_REQUESTS_RETRY_SLEEP_SECONDS = 1.0
 BATCH_SIZE = 3000
