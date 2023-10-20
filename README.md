@@ -8,6 +8,8 @@ Well name property can be found at the top of *properties.py* file.
 
 **Running 2 instances of application at a time with the same well name may cause unexpected behavior including removal of already processed data**.
 
+**The referenced input files cannot be inside any other folder. They need to be placed inside input_files directory.**
+
 *******************************************************************************************************************
 
 Note that every new run clear out the data in the output files and log folder from the previous run.
