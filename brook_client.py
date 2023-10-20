@@ -33,7 +33,7 @@ def register_well_if_doesnt_exist(client_name):
     if res.status_code >= 300:
         raise Exception(
             f"Assets from Brook retrieval failure with http response status code={res.status_code} and response={res.text}")
-    found_matched_wells = [well for well in res.json() if well["name"] == properties.WELL]
+    found_matched_wells = [well for well in res.json() if well["name"] == properties.WELL and well["region"] == properties.REGION]
     if len(found_matched_wells) == 1:
         return found_matched_wells[0]["id"]
     return create_well_and_return_id(client_name)
