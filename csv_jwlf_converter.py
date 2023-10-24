@@ -62,7 +62,7 @@ def create_data_points(line):
                 result = result.isoformat()
             except:
                 result = None
-        if result is None:
+        if result is None or 'NaT' == result:
             result = str(value)
         data_points.append(result)
 
@@ -88,7 +88,7 @@ def csv_line_to_jwlf_log(name, headers_line, lines, metadata=None):
     data = [create_data_points(line) for line in lines]
     curves = create_jwlf_curves(headers_line, data[0])
     date = datetime.datetime.now(pytz.utc).isoformat()
-    if curves[0]['valueType'] == 'datetime':
+    if curves[0]['valueType'] == 'datetime' and data[-1][0]:
         date = data[-1][0]
     headers = {
         "name": name,
